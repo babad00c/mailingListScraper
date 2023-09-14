@@ -4,9 +4,13 @@
 Items and ItemLoaders
 """
 import scrapy
-from scrapy.loader.processors import Join, MapCompose
+from itemloaders.processors import Join, MapCompose
 from w3lib.html import replace_entities
 
+
+class RawEmlMessage(scrapy.Item):
+    raw_message = scrapy.Field(output_processor=Join())
+    id = scrapy.Field()
 
 class Email(scrapy.Item):
     "The main item to store our emails"

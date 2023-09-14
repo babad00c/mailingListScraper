@@ -14,7 +14,8 @@ from dateutil import tz
 
 from scrapy import signals
 from scrapy.exporters import CsvItemExporter, XmlItemExporter
-
+from mailingListScraper.items import RawEmlMessage, Email
+import hashlib 
 LOGGER = logging.getLogger('pipelines')
 
 
@@ -285,4 +286,30 @@ class CsvExport(object):
 
     def process_item(self, item, spider):
         self.exporter.export_item(item)
+        return item
+
+class EmlExport(object):
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        crawler.signals.connect(pipeline.spider_opened, signals.spider_opened)
+        # crawler.signals.connect(pipeline.spider_closed, signals.spider_closed)
+        return pipeline
+
+    def spider_opened(self, spider):
+        """
+        When spider opens, set up base of filename
+        """
+        runtime = datetime.utcnow().strftime('%Y-%m-%dT%HH%MM%SS')
+        self.base_directory = os.path.join('data', spider.name, runtime)
+        if not os.path.exists(self.base_directory):
+            os.makedirs(self.base_directory)
+
+    def process_item(self, item, spider):
+        if isinstance(item, RawEmlMessage):
+            hash_result = hashlib.blake2b(bytes(item['raw_message'],'utf-8'), digest_size=8)
+            eml_file_path = os.path.join(self.base_directory, f"message_{hash_result.hexdigest()}.eml")
+            with open(eml_file_path, "w") as eml_file:
+                eml_file.write(item['raw_message'])
         return item

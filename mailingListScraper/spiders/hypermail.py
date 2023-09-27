@@ -25,7 +25,7 @@ class HypermailSpider(ArchiveSpider):
         # 'lkml': 'http://lkml.iu.edu/hypermail/linux/kernel/',
         # 'alpha': 'http://lkml.iu.edu/hypermail/linux/alpha/',
         'net': 'http://lkml.iu.edu/hypermail/linux/net/',
-        'ext-weidei': 'https://extropians.weidai.com/extropians.1Q01/index.html'
+        'ext-weidei': 'https://extropians.weidai.com/'
     }
     default_list = 'ext-weidei'
 
@@ -45,7 +45,6 @@ class HypermailSpider(ArchiveSpider):
         
         # combine with the base path
         msglist_urls = [response.url + u for u in msglist_urls]
-        self.logger.info(f'message list urls : {msglist_urls}')
 
         if any(self.years):
             urls = []
@@ -92,6 +91,7 @@ class HypermailSpider(ArchiveSpider):
 
         load = ItemLoader(item=Email(), selector=response)
 
+        # TODO: fix in reply to and email ID
         # Take care of easy fields first
         load.add_value('url', response.url)
 
@@ -100,21 +100,30 @@ class HypermailSpider(ArchiveSpider):
         link = response.xpath(pattern_replyto).extract()
         link = [''] if not link else link
         link = link[0]
-        url_re_capture = re.search(r'^https://(.*/)(\d{4}).html', response.url)
-        # base_message_prefix = re.search(r'^https://(.*/)(\d{4}).html', response.url).groups(0)[0].replace('/','-')
-        base_message_prefix = url_re_capture[1].replace('/','-')
-        this_message_id = url_re_capture[2].replace('/','-')
+        load.add_value('replyto', link)
+        email_id_search = re.search('<!-- id="(.*)" -->', response.text)
+        replyto_id_search = re.search('<!-- inreplyto="(.*)" -->', response.text)
         
-        if re.match('^\d{4}.html$',link) is not None:
-            # strip trailing '.html' and append to the base prefix
-            suffix = link.split('.')[0]
-            reply_message_id = base_message_prefix + suffix
+        if email_id_search is None or replyto_id_search is None:
+            link = response.xpath(pattern_replyto).extract()
+            link = [''] if not link else link
+            link = link[0]
+            url_re_capture = re.search(r'^https://(.*/)(\d{4}).html', response.url)
+            # the consistent use of urls to create the id should ensure that we have unique values
+            base_message_prefix = url_re_capture[1].replace('/','-')
+            email_message_id = url_re_capture[2].replace('/','-')
+            
+            if re.match('^\d{4}.html$',link) is not None:
+                # strip trailing '.html' and append to the base prefix
+                suffix = link.split('.')[0]
+                reply_message_id = base_message_prefix + suffix
+            else:
+                reply_message_id = link.replace('/','-')
         else:
-            reply_message_id = link.replace('/','-')
-        
-        # the consistent use of urls to create the id should ensure that we have unique values
-        load.add_value('replyto', reply_message_id)
-        load.add_value('emailId', this_message_id)
+            email_message_id = email_id_search[1]
+            reply_message_id = replyto_id_search[1]
+        load.add_value('inReplyTo', reply_message_id)
+        load.add_value('emailId', email_message_id)
 
         # Sometime in 2003, the archive changes and the email pages
         # require specific procedure to extract the following fields:

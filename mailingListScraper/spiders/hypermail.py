@@ -14,9 +14,7 @@ from mailingListScraper.spiders.ArchiveSpider import ArchiveSpider
 
 class HypermailSpider(ArchiveSpider):
     """
-    HypermailSpider scraps the mailing lists in the Hypermail archive. There
-    are only three of them (lkml, alpha and net). The default option is to
-    scrap lkml.
+    HypermailSpider scraps the mailing lists in the Hypermail archive.
     """
     name = "hypermail"
 

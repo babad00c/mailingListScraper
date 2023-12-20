@@ -14,7 +14,8 @@ from dateutil import tz
 
 from scrapy import signals
 from scrapy.exporters import CsvItemExporter, XmlItemExporter
-
+from mailingListScraper.items import RawEmlMessage, Email
+import hashlib 
 LOGGER = logging.getLogger('pipelines')
 
 
@@ -285,4 +286,50 @@ class CsvExport(object):
 
     def process_item(self, item, spider):
         self.exporter.export_item(item)
+        return item
+
+class EmlExport(object):
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        crawler.signals.connect(pipeline.spider_opened, signals.spider_opened)
+        # crawler.signals.connect(pipeline.spider_closed, signals.spider_closed)
+        return pipeline
+
+    def spider_opened(self, spider):
+        """
+        When spider opens, set up base of filename
+        """
+        runtime = datetime.utcnow().strftime('%Y-%m-%dT%HH%MM%SS')
+        self.base_directory = os.path.join('data', spider.name, runtime)
+        if not os.path.exists(self.base_directory):
+            os.makedirs(self.base_directory)
+
+        fields_to_export = ['mailingList', 'emailId',
+                            'senderName', 'senderEmail',
+                            'timestampSent', 'timestampReceived',
+                            'subject', 'url', 'replyto']
+        fields_to_export = [f for f in fields_to_export if f not in spider.drop_fields]
+
+    def process_item(self, item, spider):
+        # EML message format https://www.ietf.org/rfc/rfc5322.txt
+
+        if isinstance(item, RawEmlMessage):
+            eml_text = item['raw_message']
+        elif isinstance(item, Email):
+            eml_text = f"From: {item['senderEmail']} ({item['senderName']})\n"
+            eml_text += f"Date: {item['timeSent']}\n"
+            eml_text += f"Subject: {item['subject']}\n"
+            if item.get('inReplyTo', None):
+                eml_text += f"In-Reply-To: <{item['inReplyTo']}>\n"
+            if item.get('emailId', None):
+                eml_text += f"Message-ID: <{item['emailId']}>\n"
+            eml_text += '\n'
+            eml_text += item['body']
+
+        hash_result = hashlib.blake2b(bytes(eml_text,'utf-8'), digest_size=8)
+        eml_file_path = os.path.join(self.base_directory, f"message_{hash_result.hexdigest()}.eml")
+        with open(eml_file_path, "w") as eml_file:
+            eml_file.write(eml_text)
         return item

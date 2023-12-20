@@ -4,15 +4,20 @@
 Items and ItemLoaders
 """
 import scrapy
-from scrapy.loader.processors import Join, MapCompose
+from itemloaders.processors import Join, MapCompose
 from w3lib.html import replace_entities
 
+
+class RawEmlMessage(scrapy.Item):
+    raw_message = scrapy.Field(output_processor=Join())
+    id = scrapy.Field()
 
 class Email(scrapy.Item):
     "The main item to store our emails"
 
-    emailId = scrapy.Field()
-
+    emailId = scrapy.Field(
+        output_processor=Join()
+    )
     senderName = scrapy.Field(
         input_processor=MapCompose(replace_entities),
         output_processor=Join()
@@ -40,6 +45,7 @@ class Email(scrapy.Item):
 
     url = scrapy.Field(output_processor=Join())
     replyto = scrapy.Field(output_processor=Join())
+    inReplyTo = scrapy.Field(output_processor=Join())
     subject = scrapy.Field(output_processor=Join())
     mailingList = scrapy.Field(output_processor=Join())
 

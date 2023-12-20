@@ -14,20 +14,18 @@ from mailingListScraper.spiders.ArchiveSpider import ArchiveSpider
 
 class HypermailSpider(ArchiveSpider):
     """
-    HypermailSpider scraps the mailing lists in the Hypermail archive. There
-    are only three of them (lkml, alpha and net). The default option is to
-    scrap lkml.
+    HypermailSpider scraps the mailing lists in the Hypermail archive.
     """
     name = "hypermail"
-    allowed_domains = ["lkml.iu.edu"]
 
     # Email Lists available from Hypermail archive:
     mailing_lists = {
-        'lkml': 'http://lkml.iu.edu/hypermail/linux/kernel/',
-        'alpha': 'http://lkml.iu.edu/hypermail/linux/alpha/',
-        'net': 'http://lkml.iu.edu/hypermail/linux/net/'
+        # 'lkml': 'http://lkml.iu.edu/hypermail/linux/kernel/',
+        # 'alpha': 'http://lkml.iu.edu/hypermail/linux/alpha/',
+        'net': 'http://lkml.iu.edu/hypermail/linux/net/',
+        'ext-weidei': 'https://extropians.weidai.com/'
     }
-    default_list = 'lkml'
+    default_list = 'ext-weidei'
 
     def parse(self, response):
         """
@@ -36,17 +34,21 @@ class HypermailSpider(ArchiveSpider):
         @url http://lkml.iu.edu/hypermail/linux/kernel/
         @returns requests 1002
         """
-
-        msglist_urls = response.xpath('//li//a//@href').extract()
+        # get all links from the index page
+        msglist_urls = response.xpath('//a//@href').extract()
+        
+        # filter out paths that don't have message lists
+        url_pattern = r'.+\.[0-9Q]{2,4}\/$'
+        msglist_urls = [u for u in msglist_urls if re.match(url_pattern,u)]
+        
+        # combine with the base path
         msglist_urls = [response.url + u for u in msglist_urls]
 
         if any(self.years):
             urls = []
-
             for year in self.years:
                 pattern = response.url + year[2:]
                 urls.extend([u for u in msglist_urls if pattern in u])
-
             msglist_urls = urls
 
         for url in msglist_urls:
@@ -61,8 +63,10 @@ class HypermailSpider(ArchiveSpider):
         """
 
         msg_urls = response.xpath('//li//a//@href').extract()
-        reg_url = re.search(r'^(.*)/index\.html', response.url)
+        # reg_url = re.search(r'^(.*)/index\.html', response.url)
+        reg_url = re.search(r'^(.*)/(index\.html)?', response.url)
         base_url = reg_url.group(1)
+        self.logger.info(f'base_url : {base_url}')
 
         # TODO: refactor here
         for rel_url in msg_urls:
@@ -85,6 +89,7 @@ class HypermailSpider(ArchiveSpider):
 
         load = ItemLoader(item=Email(), selector=response)
 
+        # TODO: fix in reply to and email ID
         # Take care of easy fields first
         load.add_value('url', response.url)
 
@@ -92,8 +97,31 @@ class HypermailSpider(ArchiveSpider):
         pattern_replyto += '/a/@href'
         link = response.xpath(pattern_replyto).extract()
         link = [''] if not link else link
-
-        load.add_value('replyto', link[0])
+        link = link[0]
+        load.add_value('replyto', link)
+        email_id_search = re.search('<!-- id="(.*)" -->', response.text)
+        replyto_id_search = re.search('<!-- inreplyto="(.*)" -->', response.text)
+        
+        if email_id_search is None or replyto_id_search is None:
+            link = response.xpath(pattern_replyto).extract()
+            link = [''] if not link else link
+            link = link[0]
+            url_re_capture = re.search(r'^https://(.*/)(\d{4}).html', response.url)
+            # the consistent use of urls to create the id should ensure that we have unique values
+            base_message_prefix = url_re_capture[1].replace('/','-')
+            email_message_id = url_re_capture[2].replace('/','-')
+            
+            if re.match('^\d{4}.html$',link) is not None:
+                # strip trailing '.html' and append to the base prefix
+                suffix = link.split('.')[0]
+                reply_message_id = base_message_prefix + suffix
+            else:
+                reply_message_id = link.replace('/','-')
+        else:
+            email_message_id = email_id_search[1]
+            reply_message_id = replyto_id_search[1]
+        load.add_value('inReplyTo', reply_message_id)
+        load.add_value('emailId', email_message_id)
 
         # Sometime in 2003, the archive changes and the email pages
         # require specific procedure to extract the following fields:
